@@ -1,0 +1,46 @@
+{
+  "name": "remifi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remifi — programmable USDC splits on CROO CAP + Base",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "build:prod": "npm run typecheck && npm run build",
+    "typecheck": "tsc --noEmit",
+    "journey": "tsx scripts/run-full-journey.ts",
+    "verify:flow": "tsx scripts/verify-flow.ts",
+    "verify:llm": "tsx scripts/verify-llm.ts",
+    "export:orders": "tsx scripts/export-completed-orders.ts",
+    "a2a:hire": "tsx scripts/a2a-third-hire.ts",
+    "a2a:instant-rotate": "tsx scripts/a2a-instant-pay-rotate.ts",
+    "a2a:cross-agent": "tsx scripts/a2a-cross-agent-journey.ts",
+    "railway:env": "tsx scripts/sync-railway-env.ts",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:sync-abi": "tsx scripts/sync-router-abi.ts",
+    "contracts:prepare": "npm run contracts:build && npm run contracts:sync-abi",
+    "contracts:test": "cd contracts && forge test -vv"
+  },
+  "dependencies": {
+    "@croo-network/sdk": "^0.2.1",
+    "@langchain/anthropic": "^0.3.22",
+    "@langchain/core": "^0.3.58",
+    "@langchain/openai": "^0.5.13",
+    "dotenv": "^16.4.7",
+    "pg": "^8.22.0",
+    "viem": "^2.31.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@railway/cli": "^4.15.0",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

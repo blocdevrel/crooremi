@@ -1,0 +1,89 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment & secrets (never commit)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.env.railway.tmp
+.env.railway
+*.railway.tmp
+*.pem
+*.key
+croo_sk_*
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.vercel/
+.turbo/
+*.tsbuildinfo
+
+# Hardhat / Foundry (contracts/)
+contracts/cache/
+contracts/out/
+contracts/lib/
+contracts/broadcast/
+contracts/artifacts/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+contracts/.openzeppelin/
+
+# Test & coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE (keep shared settings if you add them later)
+.idea/
+*.swp
+*.swo
+*~
+
+# Optional: uncomment to ignore local Cursor user settings
+# .cursor/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temp
+tmp/
+temp/
+.cache/
+
+# Local policy storage (if agent writes JSON policies to disk)
+data/
+!data/.gitkeep
+
+# Demo / local-only
+*.local.md
+docs/ORDERS.json
+
+# Local planning docs (private — not for public repo)
+devplan.md
+remifi.md
+setup.md
+planupdate.md
