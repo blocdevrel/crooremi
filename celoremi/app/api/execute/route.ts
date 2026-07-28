@@ -16,7 +16,7 @@ import {
 import { jsonError, jsonOk } from "@/lib/http";
 import { assertAmountWithinCaps, executePayrollTransfers } from "@/lib/payout";
 import type { PolicyRecipient } from "@/lib/policy/validate";
-import { isHireResult, requireHirePayment } from "@/lib/x402";
+import { isHireResult, requireHirePayment, buildPaymentResponseHeader } from "@/lib/x402";
 import { serviceDiscover } from "@/lib/service-discover";
 
 export async function GET() {
@@ -109,18 +109,29 @@ export async function POST(req: Request) {
         hireMode: hire.mode,
       });
 
-      return jsonOk({
-        jobId: completed.id,
-        status: "completed",
-        policyId: policy.id,
-        totalAmount: body.amount,
-        transfers,
-        settlement,
-        hireMode: hire.mode,
-        ...(hire.settlementTxHash
-          ? { x402SettlementTxHash: hire.settlementTxHash }
-          : {}),
-      });
+      return jsonOk(
+        {
+          jobId: completed.id,
+          status: "completed",
+          policyId: policy.id,
+          totalAmount: body.amount,
+          transfers,
+          settlement,
+          hireMode: hire.mode,
+          ...(hire.settlementTxHash
+            ? { x402SettlementTxHash: hire.settlementTxHash }
+            : {}),
+        },
+        200,
+        (() => {
+          const paymentResponse = buildPaymentResponseHeader(
+            hire.settlementTxHash,
+          );
+          return paymentResponse
+            ? { "PAYMENT-RESPONSE": paymentResponse }
+            : undefined;
+        })(),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Payroll failed";
       await failPayoutJob(job.id, message);

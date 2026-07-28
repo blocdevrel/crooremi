@@ -2,8 +2,15 @@ import { NextResponse } from "next/server";
 import { AuthError } from "./auth";
 import { ZodError } from "zod";
 
-export function jsonOk<T>(data: T, status = 200) {
-  return NextResponse.json(data, { status });
+export function jsonOk<T>(
+  data: T,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+) {
+  return NextResponse.json(data, {
+    status,
+    ...(extraHeaders ? { headers: extraHeaders } : {}),
+  });
 }
 
 export function jsonError(error: unknown, fallbackStatus = 500) {

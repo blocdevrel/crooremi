@@ -1,5 +1,5 @@
 import { getAddress, type Hex, type PrivateKeyAccount } from "viem";
-import type { PaymentRequirements } from "./index";
+import type { PaymentRequirements } from "./types";
 
 const TRANSFER_WITH_AUTHORIZATION_TYPES = {
   TransferWithAuthorization: [

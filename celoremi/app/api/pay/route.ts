@@ -12,7 +12,7 @@ import {
   sendTaggedUsdcTransfer,
 } from "@/lib/payout";
 import { resolveAddressInput } from "@/lib/ens/resolve";
-import { isHireResult, requireHirePayment } from "@/lib/x402";
+import { isHireResult, requireHirePayment, buildPaymentResponseHeader } from "@/lib/x402";
 import { serviceDiscover } from "@/lib/service-discover";
 
 export async function GET() {
@@ -71,19 +71,30 @@ export async function POST(req: Request) {
         hireMode: hire.mode,
       });
 
-      return jsonOk({
-        jobId: job.id,
-        status: "completed",
-        txHash: result.txHash,
-        explorer: result.explorer,
-        to: result.to,
-        ens: resolved.ens ?? null,
-        amount: result.amount.toString(),
-        hireMode: hire.mode,
-        ...(hire.settlementTxHash
-          ? { x402SettlementTxHash: hire.settlementTxHash }
-          : {}),
-      });
+      return jsonOk(
+        {
+          jobId: job.id,
+          status: "completed",
+          txHash: result.txHash,
+          explorer: result.explorer,
+          to: result.to,
+          ens: resolved.ens ?? null,
+          amount: result.amount.toString(),
+          hireMode: hire.mode,
+          ...(hire.settlementTxHash
+            ? { x402SettlementTxHash: hire.settlementTxHash }
+            : {}),
+        },
+        200,
+        (() => {
+          const paymentResponse = buildPaymentResponseHeader(
+            hire.settlementTxHash,
+          );
+          return paymentResponse
+            ? { "PAYMENT-RESPONSE": paymentResponse }
+            : undefined;
+        })(),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Instant pay failed";
       await failPayoutJob(job.id, message);

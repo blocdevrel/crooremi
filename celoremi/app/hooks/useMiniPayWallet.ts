@@ -116,26 +116,35 @@ export function useMiniPayWallet() {
     return () => eth.removeListener?.("accountsChanged", onAccounts);
   }, []);
 
+  const getWalletClient = useCallback(async (): Promise<{
+    client: WalletClient;
+    account: Address;
+  } | null> => {
+    const account = state.address;
+    if (!account) return null;
+    let client = clientRef.current;
+    if (!client) {
+      const connected = await connectMiniPay();
+      clientRef.current = connected.client;
+      client = connected.client;
+    }
+    return { client, account };
+  }, [state.address]);
+
   const fundAgent = useCallback(
     async (agentAddress: Address, amountBaseUnits: bigint) => {
-      let client = clientRef.current;
-      const account = state.address;
-      if (!account) {
+      const connected = await getWalletClient();
+      if (!connected) {
         throw new Error("Connect your wallet first");
       }
-      if (!client) {
-        const connected = await connectMiniPay();
-        clientRef.current = connected.client;
-        client = connected.client;
-      }
       return fundAgentWithUsdc({
-        client,
-        account,
+        client: connected.client,
+        account: connected.account,
         agentAddress,
         amountBaseUnits,
       });
     },
-    [state.address],
+    [getWalletClient],
   );
 
   const disconnect = useCallback(async () => {
@@ -167,5 +176,6 @@ export function useMiniPayWallet() {
     connect,
     disconnect,
     fundAgent,
+    getWalletClient,
   };
 }

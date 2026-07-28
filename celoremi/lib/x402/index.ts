@@ -3,19 +3,9 @@ import { assertExecuteAuth, AuthError, isSameOriginUi } from "../auth";
 import { requireAgentAccount } from "../chain/clients";
 import { env, getX402PayTo, isX402Enabled } from "../config";
 import { createXPaymentHeader } from "./sign-payment";
+import type { PaymentRequirements } from "./types";
 
-export type PaymentRequirements = {
-  scheme: "exact";
-  network: "celo" | "eip155:42220";
-  maxAmountRequired: string;
-  resource: string;
-  description: string;
-  mimeType: string;
-  payTo: string;
-  maxTimeoutSeconds: number;
-  asset: string;
-  extra: { name: string; version: string };
-};
+export type { PaymentRequirements } from "./types";
 
 export type HireResult = {
   mode: "api_key" | "x402" | "dev_skip";
@@ -34,7 +24,7 @@ export function buildHireRequirements(resource: string): PaymentRequirements {
   }
   return {
     scheme: "exact",
-    network: "celo",
+    network: "eip155:42220",
     maxAmountRequired: env.X402_HIRE_PRICE.toString(),
     resource,
     description: "Remifi hire fee",
@@ -100,23 +90,43 @@ async function facilitatorPost(
 }
 
 function extractTxHash(settled: Record<string, unknown>): string | undefined {
-  const candidates = [
-    settled.transaction,
-    settled.txHash,
-    settled.hash,
-    settled.transactionHash,
-  ];
-  for (const c of candidates) {
-    if (typeof c === "string" && c.startsWith("0x")) return c;
-  }
-  const data = settled.data;
-  if (data && typeof data === "object") {
-    const d = data as Record<string, unknown>;
-    for (const c of [d.transaction, d.txHash, d.hash]) {
+  const scan = (obj: Record<string, unknown> | undefined): string | undefined => {
+    if (!obj) return undefined;
+    for (const key of [
+      "transaction",
+      "txHash",
+      "hash",
+      "transactionHash",
+      "settlementTxHash",
+    ]) {
+      const c = obj[key];
       if (typeof c === "string" && c.startsWith("0x")) return c;
+    }
+    return undefined;
+  };
+
+  const direct = scan(settled);
+  if (direct) return direct;
+
+  for (const nestedKey of ["data", "settlement", "result", "payment"]) {
+    const nested = settled[nestedKey];
+    if (nested && typeof nested === "object") {
+      const found = scan(nested as Record<string, unknown>);
+      if (found) return found;
     }
   }
   return undefined;
+}
+
+export function buildPaymentResponseHeader(txHash?: string): string | undefined {
+  if (!txHash) return undefined;
+  const body = {
+    success: true,
+    transaction: txHash,
+    network: "eip155:42220",
+    errorReason: null,
+  };
+  return Buffer.from(JSON.stringify(body), "utf8").toString("base64");
 }
 
 /** Settle X-PAYMENT with the Celo facilitator (Track 2). */
@@ -135,7 +145,9 @@ export async function settleX402Hire(
 
   const paymentRequirements = {
     ...requirements,
-    network: "celo" as const,
+    network: (requirements.network === "celo"
+      ? "celo"
+      : requirements.network) as "celo" | "eip155:42220",
     scheme: "exact" as const,
   };
 

@@ -8,6 +8,7 @@ import {
   isMobileDevice,
   openInMiniPay,
 } from "../../lib/minipay/connect";
+import { fetchWithX402Hire } from "../../lib/x402/browser";
 import { useMiniPayWallet } from "../hooks/useMiniPayWallet";
 
 type Tab = "home" | "split" | "pay" | "status";
@@ -18,11 +19,17 @@ type Health = {
   agentAddress: string | null;
   usdcBalance: string | null;
   usdcBalanceFormatted: string | null;
+  usdc?: string;
   chainOk: boolean;
   mockPayout: boolean;
   payrollMode: string;
   attributionTagConfigured: boolean;
-  x402: { enabled: boolean; hirePrice: string; facilitatorOk: boolean | null };
+  x402: {
+    enabled: boolean;
+    payTo: string | null;
+    hirePrice: string;
+    facilitatorOk: boolean | null;
+  };
   router: { configured: boolean; ok?: boolean };
 };
 
@@ -351,13 +358,35 @@ export function RemifiApp() {
 
   async function ensureUsdcForPay(amountStr: string): Promise<boolean> {
     const amount = BigInt(amountStr);
+    const hirePrice =
+      health?.x402?.enabled && health.x402.hirePrice
+        ? BigInt(health.x402.hirePrice)
+        : 0n;
     const agentBal = health?.usdcBalance ? BigInt(health.usdcBalance) : 0n;
-    if (agentBal >= amount) return true;
+    const walletPaysHire = Boolean(wallet.address && !walletIsAgent && hirePrice > 0n);
+    const agentNeed = walletPaysHire ? amount : amount + hirePrice;
+
+    if (walletPaysHire) {
+      const userBal = walletUsdcBalance ? BigInt(walletUsdcBalance) : 0n;
+      const agentDeficit = agentBal >= amount ? 0n : amount - agentBal;
+      const userNeed = hirePrice + agentDeficit;
+      if (userBal < userNeed) {
+        setToast({
+          kind: "err",
+          text: `Need ${formatUsdc(userNeed.toString())} USDC in your wallet (includes ${formatUsdc(hirePrice.toString())} x402 hire fee).`,
+        });
+        return false;
+      }
+    }
+
+    if (agentBal >= agentNeed) return true;
 
     if (!wallet.address || walletIsAgent) {
       setToast({
         kind: "err",
-        text: "Not enough USDC. Connect your wallet with USDC on Celo, then try again.",
+        text: walletPaysHire
+          ? "Not enough USDC on the agent. Connect your wallet with USDC on Celo, then try again."
+          : "Not enough USDC. Connect your wallet with USDC on Celo, then try again.",
       });
       return false;
     }
@@ -368,7 +397,7 @@ export function RemifiApp() {
       return false;
     }
 
-    const deficit = amount - agentBal;
+    const deficit = agentNeed - agentBal;
     try {
       setToast({ kind: "ok", text: "Using USDC from your wallet…" });
       await wallet.fundAgent(agent, deficit);
@@ -378,6 +407,35 @@ export function RemifiApp() {
       setToast({ kind: "err", text: friendlyWalletError(e) });
       return false;
     }
+  }
+
+  function x402HireConfig(resource: string) {
+    if (!health?.x402?.enabled || !health.x402.payTo || !health.usdc) {
+      return null;
+    }
+    return {
+      resource,
+      payTo: health.x402.payTo,
+      hirePrice: health.x402.hirePrice,
+      usdcAddress: health.usdc,
+    };
+  }
+
+  async function postWithX402Hire(
+    resource: string,
+    body: Record<string, unknown>,
+  ) {
+    const connected = wallet.address ? await wallet.getWalletClient() : null;
+    return fetchWithX402Hire(
+      resource,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      connected,
+      x402HireConfig(resource),
+    );
   }
 
   function recipientsToText(
@@ -557,14 +615,10 @@ export function RemifiApp() {
       if (!amount || amount === "0") throw new Error("Enter a valid USDC amount");
       if (!(await ensureUsdcForPay(amount))) return;
 
-      const execRes = await fetch("/api/execute", {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({
-          policyId: id,
-          amount,
-          clientJobId: `ui-${Date.now()}`,
-        }),
+      const execRes = await postWithX402Hire("/api/execute", {
+        policyId: id,
+        amount,
+        clientJobId: `ui-${Date.now()}`,
       });
       const job = await execRes.json();
       if (!execRes.ok) throw new Error(job.error || "Execute failed");
@@ -611,10 +665,9 @@ export function RemifiApp() {
       if (!payTo.trim()) throw new Error("Enter a 0x, ENS, or Base name");
       if (!(await ensureUsdcForPay(amount))) return;
 
-      const res = await fetch("/api/pay", {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify({ to: payTo.trim(), amount }),
+      const res = await postWithX402Hire("/api/pay", {
+        to: payTo.trim(),
+        amount,
       });
       const job = await res.json();
       if (!res.ok) throw new Error(job.error || "Pay failed");
