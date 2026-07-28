@@ -5,6 +5,7 @@ import {
   listDueSchedules,
   markScheduleFailed,
 } from "../db/schedules";
+import { runX402TrafficBurst, type X402TrafficResult } from "./x402-traffic";
 
 export type HeartbeatResult = {
   checkedAt: string;
@@ -19,9 +20,10 @@ export type HeartbeatResult = {
     error?: string;
     x402SettlementTxHash?: string;
   }>;
+  x402Traffic: X402TrafficResult;
 };
 
-/** Run all due recurring payroll schedules (RemitRoute-style heartbeat). */
+/** Run due payroll schedules + x402 traffic burst. */
 export async function runDueSchedules(): Promise<HeartbeatResult> {
   const due = await listDueSchedules();
   const results: HeartbeatResult["results"] = [];
@@ -62,11 +64,15 @@ export async function runDueSchedules(): Promise<HeartbeatResult> {
     }
   }
 
+  // Always run traffic after schedules (even if no due payroll).
+  const x402Traffic = await runX402TrafficBurst();
+
   return {
     checkedAt: new Date().toISOString(),
     due: due.length,
     completed,
     failed,
     results,
+    x402Traffic,
   };
 }

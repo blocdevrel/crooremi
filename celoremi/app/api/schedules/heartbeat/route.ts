@@ -20,7 +20,7 @@ function assertHeartbeatAuth(req: Request): void {
   }
 }
 
-/** POST /api/schedules/heartbeat — RemitRoute-style recurring payroll runner. */
+/** POST /api/schedules/heartbeat — due Auto payroll + x402 traffic burst. */
 export async function POST(req: Request) {
   try {
     assertHeartbeatAuth(req);
@@ -36,8 +36,13 @@ export async function GET() {
     ok: true,
     service: "remifi-heartbeat",
     description:
-      "POST with x-api-key to run due recurring payroll schedules (x402 hire + tagged USDC each run).",
-    cadence: "Call every 20+ minutes from cron or Railway scheduled job.",
+      "POST with x-api-key: due Auto payroll + x402 traffic burst (Track 2).",
+    cadence: "Call every 5–20 minutes from Railway cron.",
     path: "/api/schedules/heartbeat",
+    traffic: {
+      enabled: Boolean(env.X402_TRAFFIC_ENABLED),
+      perTick: env.X402_TRAFFIC_PER_TICK,
+      end: env.X402_TRAFFIC_END ?? null,
+    },
   });
 }

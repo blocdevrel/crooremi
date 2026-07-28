@@ -74,6 +74,15 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true" || v === "1"),
+  /** x402 self-hire burst on each heartbeat tick */
+  X402_TRAFFIC_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  /** Settlements per heartbeat (default 25) */
+  X402_TRAFFIC_PER_TICK: z.coerce.number().int().min(0).max(200).default(25),
+  /** Stop traffic after this ISO time (hackathon deadline) */
+  X402_TRAFFIC_END: z.string().optional().transform(emptyToUndef),
   NEXT_PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   ANTHROPIC_API_KEY: z.string().optional().transform(emptyToUndef),
