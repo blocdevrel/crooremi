@@ -162,6 +162,15 @@ function usdcToBaseUnits(amount: string): string | null {
   return raw || "0";
 }
 
+/** Parse base-unit integers or human USDC decimals into bigint base units. */
+function parseUsdcBaseUnits(raw: string | null | undefined): bigint {
+  if (!raw?.trim()) return 0n;
+  const t = raw.trim();
+  if (/^\d+$/.test(t)) return BigInt(t);
+  const asBase = usdcToBaseUnits(t);
+  return asBase ? BigInt(asBase) : 0n;
+}
+
 function formatUsdc(base?: string | null) {
   if (!base) return "0.00";
   const n = Number(base) / 1e6;
@@ -372,17 +381,22 @@ export function RemifiApp() {
   }
 
   async function ensureUsdcForPay(amountStr: string): Promise<boolean> {
-    const amount = BigInt(amountStr);
+    const amount = parseUsdcBaseUnits(amountStr);
+    if (amount <= 0n) {
+      setToast({ kind: "err", text: "Enter a valid USDC amount" });
+      return false;
+    }
     const hirePrice =
       health?.x402?.enabled && health.x402.hirePrice
-        ? BigInt(health.x402.hirePrice)
+        ? parseUsdcBaseUnits(health.x402.hirePrice)
         : 0n;
-    const agentBal = health?.usdcBalance ? BigInt(health.usdcBalance) : 0n;
+    const agentBal = parseUsdcBaseUnits(health?.usdcBalance);
     const walletPaysHire = Boolean(wallet.address && !walletIsAgent && hirePrice > 0n);
     const agentNeed = walletPaysHire ? amount : amount + hirePrice;
 
     if (walletPaysHire) {
-      const userBal = walletUsdcBalance ? BigInt(walletUsdcBalance) : 0n;
+      // walletUsdcBalance is a human decimal from formatUnits (e.g. "1.25")
+      const userBal = parseUsdcBaseUnits(walletUsdcBalance);
       const agentDeficit = agentBal >= amount ? 0n : amount - agentBal;
       const userNeed = hirePrice + agentDeficit;
       if (userBal < userNeed) {
