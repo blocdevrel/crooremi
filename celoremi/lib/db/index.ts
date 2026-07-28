@@ -91,6 +91,7 @@ export async function withDb<T>(fn: (db: PrismaClient) => Promise<T>): Promise<T
 export type CreatePolicyInput = {
   name?: string;
   recipients: PolicyRecipient[];
+  ownerAddress: string;
 };
 
 export async function createPolicy(input: CreatePolicyInput) {
@@ -99,6 +100,7 @@ export async function createPolicy(input: CreatePolicyInput) {
       data: {
         name: input.name ?? null,
         recipients: input.recipients,
+        ownerAddress: input.ownerAddress.toLowerCase(),
       },
     }),
   );
@@ -108,6 +110,35 @@ export async function getPolicy(id: string) {
   return withDb((db) => db.policy.findUnique({ where: { id } }));
 }
 
+export async function getPolicyForOwner(id: string, ownerAddress: string) {
+  const owner = ownerAddress.toLowerCase();
+  return withDb((db) =>
+    db.policy.findFirst({
+      where: { id, ownerAddress: owner },
+    }),
+  );
+}
+
+export async function listPoliciesForOwner(ownerAddress: string, limit = 30) {
+  const owner = ownerAddress.toLowerCase();
+  return withDb((db) =>
+    db.policy.findMany({
+      where: { ownerAddress: owner },
+      orderBy: { updatedAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 100),
+      select: {
+        id: true,
+        name: true,
+        recipients: true,
+        ownerAddress: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+  );
+}
+
+/** @deprecated Use listPoliciesForOwner — policies are wallet-scoped. */
 export async function listPolicies(limit = 30) {
   return withDb((db) =>
     db.policy.findMany({
@@ -117,6 +148,7 @@ export async function listPolicies(limit = 30) {
         id: true,
         name: true,
         recipients: true,
+        ownerAddress: true,
         createdAt: true,
         updatedAt: true,
       },

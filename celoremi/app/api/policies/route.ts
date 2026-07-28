@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { createPolicy, listPolicies } from "@/lib/db";
+import { createPolicy, listPoliciesForOwner } from "@/lib/db";
 import { jsonError, jsonOk } from "@/lib/http";
 import { interpretPolicyFromInput } from "@/lib/policy/interpret";
 import { serviceDiscover } from "@/lib/service-discover";
+import { normalizeOwnerAddress } from "@/lib/wallet/owner";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -12,8 +13,9 @@ export async function GET(req: Request) {
       method: "POST",
       path: "/api/policies",
       description:
-        "Multi-recipient USDC split rules (JSON or natural language). Returns reusable policyId.",
+        "Multi-recipient USDC split rules (JSON or natural language). Returns reusable policyId scoped to owner wallet.",
       body: {
+        ownerAddress: "0x…",
         text: "Split 60% to vitalik.eth and 40% to 0x…",
         name: "team-payroll",
         recipients: [{ address: "0x…", bps: 6000 }],
@@ -22,13 +24,20 @@ export async function GET(req: Request) {
   }
 
   try {
+    const ownerRaw = url.searchParams.get("owner")?.trim();
+    if (!ownerRaw) {
+      return jsonOk({ error: "owner query param required (wallet address)" }, 400);
+    }
+    const ownerAddress = normalizeOwnerAddress(ownerRaw);
     const limit = Number(url.searchParams.get("limit") ?? "100");
-    const policies = await listPolicies(limit);
+    const policies = await listPoliciesForOwner(ownerAddress, limit);
     return jsonOk({
+      ownerAddress,
       policies: policies.map((policy) => ({
         policyId: policy.id,
         name: policy.name,
         recipients: policy.recipients,
+        ownerAddress: policy.ownerAddress,
         createdAt: policy.createdAt,
         updatedAt: policy.updatedAt,
       })),
@@ -40,6 +49,7 @@ export async function GET(req: Request) {
 
 const bodySchema = z
   .object({
+    ownerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/i),
     /** Plain English split instructions (uses Anthropic) */
     text: z.string().min(1).max(4000).optional(),
     name: z.string().min(1).max(120).optional(),
@@ -63,6 +73,7 @@ const bodySchema = z
 export async function POST(req: Request) {
   try {
     const body = bodySchema.parse(await req.json());
+    const ownerAddress = normalizeOwnerAddress(body.ownerAddress);
     const interpreted = await interpretPolicyFromInput({
       text: body.text,
       name: body.name,
@@ -72,6 +83,7 @@ export async function POST(req: Request) {
     const policy = await createPolicy({
       name: interpreted.name,
       recipients: interpreted.recipients,
+      ownerAddress,
     });
 
     return jsonOk(
@@ -79,6 +91,7 @@ export async function POST(req: Request) {
         policyId: policy.id,
         name: policy.name,
         recipients: policy.recipients,
+        ownerAddress: policy.ownerAddress,
         source: interpreted.source,
         resolvedFrom: interpreted.resolvedFrom,
         createdAt: policy.createdAt,

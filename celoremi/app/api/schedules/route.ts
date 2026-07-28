@@ -2,13 +2,14 @@ import { z } from "zod";
 import {
   createSchedule,
   deleteSchedule,
-  listSchedules,
+  listSchedulesForOwner,
   setScheduleEnabled,
 } from "@/lib/db/schedules";
-import { getPolicy } from "@/lib/db";
+import { getPolicyForOwner } from "@/lib/db";
 import { jsonError, jsonOk } from "@/lib/http";
 import { assertAmountWithinCaps } from "@/lib/payout";
 import { serviceDiscover } from "@/lib/service-discover";
+import { normalizeOwnerAddress } from "@/lib/wallet/owner";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -34,8 +35,13 @@ export async function GET(req: Request) {
   }
 
   try {
+    const ownerRaw = url.searchParams.get("owner")?.trim();
+    if (!ownerRaw) {
+      return jsonOk({ error: "owner query param required (wallet address)" }, 400);
+    }
+    const ownerAddress = normalizeOwnerAddress(ownerRaw);
     const limit = Number(url.searchParams.get("limit") ?? "50");
-    const schedules = await listSchedules(limit);
+    const schedules = await listSchedulesForOwner(ownerAddress, limit);
     return jsonOk({
       schedules: schedules.map((s) => ({
         scheduleId: s.id,
@@ -58,6 +64,7 @@ export async function GET(req: Request) {
 }
 
 const bodySchema = z.object({
+  ownerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/i),
   policyId: z.string().min(1),
   amount: z.string().regex(/^\d+$/),
   intervalMinutes: z.number().int().min(20).max(43_200),
@@ -69,9 +76,10 @@ export async function POST(req: Request) {
     const body = bodySchema.parse(await req.json());
     assertAmountWithinCaps(BigInt(body.amount));
 
-    const policy = await getPolicy(body.policyId);
+    const ownerAddress = normalizeOwnerAddress(body.ownerAddress);
+    const policy = await getPolicyForOwner(body.policyId, ownerAddress);
     if (!policy) {
-      return jsonOk({ error: "Policy not found" }, 404);
+      return jsonOk({ error: "Policy not found for this wallet" }, 404);
     }
 
     const schedule = await createSchedule(body);

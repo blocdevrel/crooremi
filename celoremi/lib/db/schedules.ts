@@ -27,6 +27,20 @@ export async function createSchedule(input: CreateScheduleInput) {
   );
 }
 
+export async function listSchedulesForOwner(ownerAddress: string, limit = 50) {
+  const owner = ownerAddress.toLowerCase();
+  return withDb((db) =>
+    db.payrollSchedule.findMany({
+      where: { policy: { ownerAddress: owner } },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 100),
+      include: {
+        policy: { select: { name: true, recipients: true, ownerAddress: true } },
+      },
+    }),
+  );
+}
+
 export async function listSchedules(limit = 50) {
   return withDb((db) =>
     db.payrollSchedule.findMany({

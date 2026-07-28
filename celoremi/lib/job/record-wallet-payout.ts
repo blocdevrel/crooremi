@@ -16,6 +16,7 @@ import {
   normalizeAddress,
   type PolicyRecipient,
 } from "../policy/validate";
+import { policyOwnedBy } from "../wallet/owner";
 import type { HireResult } from "../x402";
 
 export type WalletTransferInput = {
@@ -89,6 +90,9 @@ export async function recordWalletPayrollJob(
   const policy = await getPolicy(input.policyId);
   if (!policy) {
     throw new Error("Policy not found");
+  }
+  if (!policyOwnedBy(policy, payer)) {
+    throw new Error("Policy not found or not owned by payer wallet");
   }
 
   const daily = await sumCompletedAmountToday();

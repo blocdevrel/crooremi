@@ -322,9 +322,21 @@ export function RemifiApp() {
 
   const loadSavedPolicies = useCallback(
     async (opts?: { silent?: boolean }): Promise<SavedPolicy[]> => {
+      const isAgentWallet = Boolean(
+        wallet.address &&
+          health?.agentAddress &&
+          wallet.address.toLowerCase() === health.agentAddress.toLowerCase(),
+      );
+      if (!wallet.address || isAgentWallet) {
+        if (!opts?.silent) setSavedPolicies([]);
+        return [];
+      }
       if (!opts?.silent) setPoliciesLoading(true);
       try {
-        const res = await fetch("/api/policies?limit=100", { cache: "no-store" });
+        const owner = encodeURIComponent(wallet.address);
+        const res = await fetch(`/api/policies?owner=${owner}&limit=100`, {
+          cache: "no-store",
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Failed to load policies");
         const policies = sortPoliciesNewestFirst(
@@ -346,12 +358,12 @@ export function RemifiApp() {
         if (!opts?.silent) setPoliciesLoading(false);
       }
     },
-    [],
+    [wallet.address, health?.agentAddress],
   );
 
   useEffect(() => {
     if (tab === "split") void loadSavedPolicies();
-  }, [tab, loadSavedPolicies]);
+  }, [tab, loadSavedPolicies, wallet.address]);
 
   useEffect(() => {
     if (wallet.address) void loadWalletBalance();
@@ -500,9 +512,10 @@ export function RemifiApp() {
     amount: string;
     connected: { client: WalletClient; account: Address };
   }) {
-    const policyRes = await fetch(`/api/policies/${params.policyId}`, {
-      cache: "no-store",
-    });
+    const policyRes = await fetch(
+      `/api/policies/${params.policyId}?owner=${encodeURIComponent(params.connected.account)}`,
+      { cache: "no-store" },
+    );
     const policy = await policyRes.json();
     if (!policyRes.ok) {
       throw new Error(policy.error || "Policy not found");
@@ -653,6 +666,17 @@ export function RemifiApp() {
     setBusy(true);
     setResolvedPreview(null);
     try {
+      if (!wallet.address) {
+        throw new Error("Connect your wallet to save a policy");
+      }
+      const isAgentWallet = Boolean(
+        health?.agentAddress &&
+          wallet.address.toLowerCase() === health.agentAddress.toLowerCase(),
+      );
+      if (isAgentWallet) {
+        throw new Error("Connect your personal wallet — not the Remifi agent address");
+      }
+
       let body: Record<string, unknown>;
 
       if (policyInputMode === "english") {
@@ -660,6 +684,7 @@ export function RemifiApp() {
           throw new Error("Describe the split in plain English");
         }
         body = {
+          ownerAddress: wallet.address,
           text: englishText.trim(),
           name: policyName.trim() || undefined,
         };
@@ -684,6 +709,7 @@ export function RemifiApp() {
           throw new Error(`Shares must total 100% (currently ${totalBps / 100}%)`);
         }
         body = {
+          ownerAddress: wallet.address,
           name: policyName.trim() || undefined,
           recipients,
         };
@@ -801,9 +827,14 @@ export function RemifiApp() {
   }
 
   async function loadSchedules() {
+    if (!wallet.address) {
+      setActiveSchedules([]);
+      return;
+    }
     setSchedulesLoading(true);
     try {
-      const res = await fetch("/api/schedules", { cache: "no-store" });
+      const owner = encodeURIComponent(wallet.address);
+      const res = await fetch(`/api/schedules?owner=${owner}`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load schedules");
       setActiveSchedules(Array.isArray(data.schedules) ? data.schedules : []);
@@ -816,7 +847,7 @@ export function RemifiApp() {
 
   useEffect(() => {
     if (tab === "split" && splitMode === "payroll") void loadSchedules();
-  }, [tab, splitMode]);
+  }, [tab, splitMode, wallet.address]);
 
   async function disableAutoPayroll(scheduleId: string) {
     setBusy(true);
@@ -874,6 +905,7 @@ export function RemifiApp() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          ownerAddress: wallet.address,
           policyId: policyId.trim(),
           amount,
           intervalMinutes: Number(scheduleInterval),

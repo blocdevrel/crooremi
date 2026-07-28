@@ -8,13 +8,17 @@ datasource db {
 }
 
 model Policy {
-  id         String            @id @default(cuid())
-  name       String?
-  recipients Json
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  jobs       PayoutJob[]
-  schedules  PayrollSchedule[]
+  id           String            @id @default(cuid())
+  name         String?
+  recipients   Json
+  /// Wallet that created this policy — policies are private to this address.
+  ownerAddress String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  jobs         PayoutJob[]
+  schedules    PayrollSchedule[]
+
+  @@index([ownerAddress])
 }
 
 model PayoutJob {
