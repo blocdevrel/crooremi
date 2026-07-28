@@ -16,6 +16,7 @@
     "wallet:create": "tsx scripts/create-agent-wallet.ts",
     "smoke:transfer": "tsx scripts/smoke-tagged-transfer.ts",
     "smoke:x402": "tsx scripts/smoke-x402-hire.ts",
+    "heartbeat": "tsx scripts/run-heartbeat.ts",
     "8004:register": "tsx scripts/register-8004.ts",
     "8004:set-uri": "tsx scripts/set-agent-uri.ts",
     "contracts:build": "bash -lc 'export PATH=\"$HOME/.foundry/bin:$PATH\"; cd contracts && forge build'",

@@ -65,6 +65,24 @@
       ]
     },
     {
+      "id": "splitQuote",
+      "name": "Split quote (x402)",
+      "description": "Paid split preview for agent planners. GET /api/quote?policyId=&amount= with X-PAYMENT. Counts toward Track 2; pair with POST /api/execute for tagged USDC.",
+      "tags": ["quote", "x402", "planning", "agent"],
+      "examples": [
+        "GET /api/quote?policyId=…&amount=1000000"
+      ]
+    },
+    {
+      "id": "payrollSchedule",
+      "name": "Recurring payroll",
+      "description": "Set-and-forget tagged USDC payroll on a 20-minute+ cadence. POST /api/schedules; cron POST /api/schedules/heartbeat.",
+      "tags": ["recurring", "payroll", "heartbeat", "attribution"],
+      "examples": [
+        "{\"policyId\":\"…\",\"amount\":\"1000000\",\"intervalMinutes\":1440}"
+      ]
+    },
+    {
       "id": "getJobProof",
       "name": "Job / delivery proof",
       "description": "Fetch job status, transfer hashes, and explorer links for a completed payout.",

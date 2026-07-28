@@ -8,12 +8,13 @@ datasource db {
 }
 
 model Policy {
-  id         String      @id @default(cuid())
+  id         String            @id @default(cuid())
   name       String?
   recipients Json
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
   jobs       PayoutJob[]
+  schedules  PayrollSchedule[]
 }
 
 model PayoutJob {
@@ -40,4 +41,26 @@ model PayoutJob {
   @@unique([policyId, totalAmount, clientJobId])
   @@index([createdAt])
   @@index([status])
+}
+
+/// Recurring payroll — heartbeat runs due schedules (Track 1 + x402 per run).
+model PayrollSchedule {
+  id              String    @id @default(cuid())
+  policyId        String
+  policy          Policy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  name            String?
+  /// USDC base units (6 decimals) per run
+  amount          String
+  /// Minimum 20 minutes between runs
+  intervalMinutes Int       @default(1440)
+  enabled         Boolean   @default(true)
+  runCount        Int       @default(0)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([enabled, nextRunAt])
+  @@index([policyId])
 }

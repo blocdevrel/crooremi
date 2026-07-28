@@ -1,21 +1,6 @@
 import { z } from "zod";
-import {
-  executeRouterPayroll,
-  isRouterConfigured,
-  jobToOrderKey,
-} from "@/lib/chain/router";
-import { env } from "@/lib/config";
-import {
-  completePayoutJob,
-  createPayoutJob,
-  failPayoutJob,
-  findIdempotentJob,
-  getPolicy,
-  sumCompletedAmountToday,
-} from "@/lib/db";
+import { executePayrollJob } from "@/lib/job/execute-payroll";
 import { jsonError, jsonOk } from "@/lib/http";
-import { assertAmountWithinCaps, executePayrollTransfers } from "@/lib/payout";
-import type { PolicyRecipient } from "@/lib/policy/validate";
 import { isHireResult, requireHirePayment, buildPaymentResponseHeader } from "@/lib/x402";
 import { serviceDiscover } from "@/lib/service-discover";
 
@@ -46,97 +31,47 @@ export async function POST(req: Request) {
     if (!isHireResult(hire)) return hire;
 
     const body = bodySchema.parse(await req.json());
-    const totalAmount = BigInt(body.amount);
-    assertAmountWithinCaps(totalAmount);
-
-    if (body.clientJobId) {
-      const existing = await findIdempotentJob(
-        body.policyId,
-        body.amount,
-        body.clientJobId,
-      );
-      if (existing) {
-        return jsonOk({
-          jobId: existing.id,
-          status: existing.status,
-          totalAmount: existing.totalAmount,
-          transfers: existing.transfers,
-          error: existing.error,
-          idempotent: true,
-          hireMode: hire.mode,
-        });
-      }
-    }
-
-    const policy = await getPolicy(body.policyId);
-    if (!policy) {
-      return jsonOk({ error: "Policy not found" }, 404);
-    }
-
-    const daily = await sumCompletedAmountToday();
-    if (daily + totalAmount > env.MAX_DAILY_AMOUNT) {
-      throw new Error(
-        `Daily cap exceeded: ${daily} + ${totalAmount} > ${env.MAX_DAILY_AMOUNT}`,
-      );
-    }
-
-    const recipients = policy.recipients as PolicyRecipient[];
-    const job = await createPayoutJob({
-      policyId: policy.id,
-      kind: "payroll",
-      totalAmount: body.amount,
+    const result = await executePayrollJob({
+      policyId: body.policyId,
+      amount: body.amount,
       clientJobId: body.clientJobId,
+      hire,
     });
 
-    try {
-      const transfers = isRouterConfigured()
-        ? (
-            await executeRouterPayroll(
-              recipients,
-              totalAmount,
-              jobToOrderKey(job.id),
-            )
-          ).transfers
-        : await executePayrollTransfers(recipients, totalAmount);
-      const settlement = isRouterConfigured()
-        ? "router_payroll"
-        : "wallet_payroll";
-      const completed = await completePayoutJob(job.id, transfers, {
-        settlement,
-        ...(hire.settlementTxHash
-          ? { x402SettlementTxHash: hire.settlementTxHash }
-          : {}),
-        hireMode: hire.mode,
+    if (result.idempotent) {
+      return jsonOk({
+        jobId: result.jobId,
+        status: result.status,
+        totalAmount: result.totalAmount,
+        transfers: result.transfers,
+        idempotent: true,
+        hireMode: result.hireMode,
       });
-
-      return jsonOk(
-        {
-          jobId: completed.id,
-          status: "completed",
-          policyId: policy.id,
-          totalAmount: body.amount,
-          transfers,
-          settlement,
-          hireMode: hire.mode,
-          ...(hire.settlementTxHash
-            ? { x402SettlementTxHash: hire.settlementTxHash }
-            : {}),
-        },
-        200,
-        (() => {
-          const paymentResponse = buildPaymentResponseHeader(
-            hire.settlementTxHash,
-          );
-          return paymentResponse
-            ? { "PAYMENT-RESPONSE": paymentResponse }
-            : undefined;
-        })(),
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Payroll failed";
-      await failPayoutJob(job.id, message);
-      throw err;
     }
+
+    return jsonOk(
+      {
+        jobId: result.jobId,
+        status: result.status,
+        policyId: result.policyId,
+        totalAmount: result.totalAmount,
+        transfers: result.transfers,
+        settlement: result.settlement,
+        hireMode: result.hireMode,
+        ...(result.x402SettlementTxHash
+          ? { x402SettlementTxHash: result.x402SettlementTxHash }
+          : {}),
+      },
+      200,
+      (() => {
+        const paymentResponse = buildPaymentResponseHeader(
+          result.x402SettlementTxHash,
+        );
+        return paymentResponse
+          ? { "PAYMENT-RESPONSE": paymentResponse }
+          : undefined;
+      })(),
+    );
   } catch (err) {
     return jsonError(err);
   }

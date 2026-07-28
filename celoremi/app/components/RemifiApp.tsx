@@ -214,6 +214,21 @@ export function RemifiApp() {
     "0x7f8008bd9bba0da001d13c1833ce7fa650e82b6b",
   );
   const [payAmount, setPayAmount] = useState("0.01");
+  const [scheduleInterval, setScheduleInterval] = useState("1440");
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [activeSchedules, setActiveSchedules] = useState<
+    Array<{
+      scheduleId: string;
+      policyId: string;
+      policyName: string | null;
+      amount: string;
+      intervalMinutes: number;
+      enabled: boolean;
+      runCount: number;
+      nextRunAt: string | null;
+      lastError: string | null;
+    }>
+  >([]);
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<string | null>(null);
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const [inMiniPay, setInMiniPay] = useState(false);
@@ -636,6 +651,67 @@ export function RemifiApp() {
       setToast({
         kind: "err",
         text: e instanceof Error ? e.message : "Execute failed",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadSchedules() {
+    setSchedulesLoading(true);
+    try {
+      const res = await fetch("/api/schedules", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load schedules");
+      setActiveSchedules(Array.isArray(data.schedules) ? data.schedules : []);
+    } catch {
+      setActiveSchedules([]);
+    } finally {
+      setSchedulesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (tab === "split" && splitMode === "payroll") void loadSchedules();
+  }, [tab, splitMode]);
+
+  async function enableAutoPayroll() {
+    if (!policyId.trim()) {
+      setToast({ kind: "err", text: "Select a policy first" });
+      return;
+    }
+    const amount = usdcToBaseUnits(splitAmount);
+    if (!amount || amount === "0") {
+      setToast({ kind: "err", text: "Enter a valid USDC amount" });
+      return;
+    }
+    if (!(await ensureUsdcForPay(amount))) return;
+
+    setBusy(true);
+    try {
+      const res = await fetch("/api/schedules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          policyId: policyId.trim(),
+          amount,
+          intervalMinutes: Number(scheduleInterval),
+          name:
+            savedPolicies.find((p) => p.policyId === policyId.trim())?.name?.trim() ||
+            "Auto payroll",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Schedule create failed");
+      setToast({
+        kind: "ok",
+        text: "Auto payroll enabled — fund the agent; heartbeat runs tagged splits + x402",
+      });
+      void loadSchedules();
+    } catch (e) {
+      setToast({
+        kind: "err",
+        text: e instanceof Error ? e.message : "Schedule create failed",
       });
     } finally {
       setBusy(false);
@@ -1380,6 +1456,59 @@ export function RemifiApp() {
               >
                 {busy ? "Paying…" : "Pay USDC"}
               </button>
+
+              <div className="grid gap-3 rounded-[var(--radius-pp-sm)] border border-pp-ink/8 bg-pp-mist/20 p-4">
+                <div>
+                  <p className="text-sm font-extrabold text-pp-ink">Auto payroll</p>
+                  <p className="mt-1 text-xs font-medium leading-snug text-pp-muted">
+                    RemitRoute-style heartbeat: recurring tagged USDC + x402 hire each run.
+                    Fund the agent, then enable — call{" "}
+                    <code className="text-[0.65rem]">POST /api/schedules/heartbeat</code> every
+                    20+ min (cron).
+                  </p>
+                </div>
+                <label className="grid gap-1.5">
+                  <span className="text-xs font-bold text-pp-muted">Cadence</span>
+                  <select
+                    value={scheduleInterval}
+                    onChange={(e) => setScheduleInterval(e.target.value)}
+                    className="min-h-11 rounded-[0.95rem] border border-[#e4e4e4] bg-[#f7f8f6] px-3 text-sm font-medium outline-none focus:border-pp-teal"
+                  >
+                    <option value="20">Every 20 minutes</option>
+                    <option value="60">Hourly</option>
+                    <option value="1440">Daily</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !policyId}
+                  onClick={() => void enableAutoPayroll()}
+                  className="flex min-h-11 w-full items-center justify-center rounded-full border border-pp-teal/40 bg-pp-mint/40 px-5 text-sm font-extrabold text-pp-ink transition enabled:hover:bg-pp-mint/70 disabled:opacity-50"
+                >
+                  Enable auto payroll
+                </button>
+                {schedulesLoading ? (
+                  <p className="text-xs text-pp-muted">Loading schedules…</p>
+                ) : activeSchedules.length > 0 ? (
+                  <ul className="grid gap-2 text-xs">
+                    {activeSchedules.slice(0, 3).map((s) => (
+                      <li
+                        key={s.scheduleId}
+                        className="rounded-md border border-pp-ink/6 bg-pp-white/80 px-3 py-2"
+                      >
+                        <span className="font-extrabold text-pp-ink">
+                          {s.policyName || "Policy"} · ${formatUsdc(s.amount)} USDC
+                        </span>
+                        <span className="mt-0.5 block text-pp-muted">
+                          every {s.intervalMinutes}m · {s.runCount} runs
+                          {s.enabled ? "" : " · paused"}
+                          {s.lastError ? ` · ${s.lastError}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </div>
           )}
         </main>
