@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Policy {
+  id         String      @id @default(cuid())
+  name       String?
+  recipients Json
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  jobs       PayoutJob[]
+}
+
+model PayoutJob {
+  id           String    @id @default(cuid())
+  policyId     String?
+  policy       Policy?   @relation(fields: [policyId], references: [id])
+  kind         String
+  totalAmount  String
+  status       String
+  /// "router_payroll" | "wallet_payroll" | "instant"
+  settlement   String?
+  fundTxHash   String?
+  splitTxHash  String?
+  transfers    Json?
+  /// x402 hire settlement tx when Track 2 gate was used
+  x402SettlementTxHash String?
+  hireMode     String?
+  error        String?
+  /// Idempotency: (policyId, amount, clientJobId) — unique when set
+  clientJobId  String?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  @@unique([policyId, totalAmount, clientJobId])
+  @@index([createdAt])
+  @@index([status])
+}

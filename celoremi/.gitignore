@@ -1,0 +1,27 @@
+node_modules
+.next
+dist
+.env
+.env.local
+*.log
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Local / draft docs not needed in the public repo
+readm.md
+readm.md.bak
+DEPLOY.md
+progress.md
+MINIPAY.md
+skills-lock.json
+
+# Agent skill install lock / local skill copies (optional; keep SKILL via npx skills add)
+.agents/
+
+prisma/*.db
+prisma/*.db-journal
+contracts/cache
+contracts/broadcast
+contracts/out
+contracts/DEPLOY.md
+contracts/lib/

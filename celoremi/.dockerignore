@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.git
+.github
+.cursor
+.env
+.env.*
+*.log
+coverage
+contracts
+.agents
+**/*.test.ts
+readm.md
+progress.md
+scripts

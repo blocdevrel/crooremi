@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.8.0",
+  "name": "Remifi",
+  "description": "Hireable USDC payroll and revenue-split agent on Celo. One hire pays every recipient; every transfer carries ERC-8021 attribution. Services: createEnsName, createPolicy, executePaymentJob, resolveEnsName, instantUsdcPay.",
+  "skills": [
+    {
+      "id": "createPolicy",
+      "name": "Create split policy",
+      "description": "Multi-recipient USDC split rules from JSON or natural language."
+    },
+    {
+      "id": "executePaymentJob",
+      "name": "Execute payroll",
+      "description": "One hire → USDC to all policy recipients with on-chain proof and attribution tags."
+    },
+    {
+      "id": "resolveEnsName",
+      "name": "Resolve name",
+      "description": "Verify a wallet, ENS, or Base name before paying."
+    },
+    {
+      "id": "instantUsdcPay",
+      "name": "Instant USDC pay",
+      "description": "Single-shot tagged USDC to any wallet or name."
+    },
+    {
+      "id": "getJobProof",
+      "name": "Job proof",
+      "description": "Delivery proof with tx hashes and Celoscan links."
+    },
+    {
+      "id": "finance/compliance/attribution_tagging",
+      "name": "Attribution tagging",
+      "description": "ERC-8021 / @celo/attribution-tags on every agent-sent transfer for Track 1."
+    },
+    {
+      "id": "finance/payments/x402_hire",
+      "name": "x402 hire settlement",
+      "description": "Settle pay-per-request hire fees through api.x402.celo.org."
+    }
+  ],
+  "domains": [
+    {
+      "id": "technology/blockchain/celo",
+      "name": "Celo"
+    },
+    {
+      "id": "finance/defi/stablecoins",
+      "name": "Stablecoin payments"
+    },
+    {
+      "id": "finance/payments/payroll",
+      "name": "Payroll and revenue splits"
+    },
+    {
+      "id": "technology/ai_agents/a2a",
+      "name": "Agent-to-agent payments"
+    }
+  ]
+}

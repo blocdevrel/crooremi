@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pp-white: #ffffff;
+  --color-pp-mist: #eeeeee;
+  --color-pp-ink: #1f1f1f;
+  --color-pp-mint: #beeea8;
+  --color-pp-mint-deep: #9dd988;
+  --color-pp-salmon: #ff9e98;
+  --color-pp-teal: #53b8b8;
+  --color-pp-sky: #add6f8;
+  --color-pp-muted: #6f6f6f;
+  --color-pp-soft: #f4f5f2;
+  --shadow-pp: 0 20px 50px rgba(31, 31, 31, 0.09);
+  --shadow-pp-soft: 0 8px 24px rgba(31, 31, 31, 0.06);
+  --radius-pp: 1.6rem;
+  --radius-pp-sm: 1.1rem;
+  --font-pp:
+    var(--font-pp-loaded), "Plus Jakarta Sans", system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-pp);
+    color: var(--color-pp-ink);
+    background:
+      radial-gradient(ellipse 90% 55% at 50% -15%, rgba(190, 238, 168, 0.55), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 100% 20%, rgba(173, 214, 248, 0.35), transparent 55%),
+      radial-gradient(ellipse 45% 35% at 0% 80%, rgba(255, 158, 152, 0.16), transparent 50%),
+      var(--color-pp-soft);
+    background-attachment: fixed;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: var(--color-pp-mint);
+  }
+}
+
+@layer utilities {
+  .pp-rise {
+    animation: pp-rise 420ms ease both;
+  }
+
+  .pp-rise-slow {
+    animation: pp-rise 560ms ease both;
+  }
+
+  .pp-toast {
+    animation: pp-toast-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes pp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pp-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes pp-live-pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+
+@keyframes pp-ring {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.18);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-rise,
+  .pp-rise-slow,
+  .animate-\[pp-ring_2\.4s_ease-out_infinite\],
+  .animate-\[pp-live-pulse_1\.6s_ease-out_infinite\] {
+    animation: none !important;
+  }
+}

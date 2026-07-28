@@ -1,0 +1,86 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "Remifi",
+  "description": "In DeFi, paying a team means calculate shares, send a transfer, send another, track tx hashes, repeat — step after step. What if your agent just did all of it? One hire. Every recipient paid. Proof on Celo.\n\nRight now, every agent that splits USDC either builds its own payout logic or waits for a human to run payroll. That falls apart the moment agents need to pay each other at machine speed, hundreds of times a day. Manual splits don't scale to an agent economy.\n\nMeet Remifi — a hireable USDC payout agent on Celo mainnet. Describe who gets what in plain English or JSON. Execute once. Every wallet receives USDC. Every agent-sent transfer carries an ERC-8021 attribution tag. Optional x402 hire settlement via the Celo facilitator.",
+  "image": "https://remifi.up.railway.app/remifi-logo.png",
+  "active": true,
+  "onAigora": true,
+  "x402Support": true,
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://remifi.up.railway.app/",
+      "version": "1.0.0"
+    },
+    {
+      "name": "A2A",
+      "endpoint": "https://remifi.up.railway.app/.well-known/agent-card.json",
+      "version": "0.3.0"
+    },
+    {
+      "name": "OASF",
+      "endpoint": "https://remifi.up.railway.app/oasf.json",
+      "version": "0.8",
+      "skills": [
+        "createPolicy",
+        "executePaymentJob",
+        "resolveEnsName",
+        "instantUsdcPay",
+        "getJobProof"
+      ],
+      "domains": [
+        "technology/blockchain/celo",
+        "finance/defi/stablecoins",
+        "finance/payments/payroll",
+        "technology/ai_agents/a2a"
+      ]
+    },
+    {
+      "name": "agentWallet",
+      "endpoint": "eip155:42220:0xB98cFAC37b8bD7f549789718aC17F8aEE7cE0c37"
+    },
+    {
+      "name": "DID",
+      "endpoint": "did:ethr:42220:0xB98cFAC37b8bD7f549789718aC17F8aEE7cE0c37",
+      "version": "v1"
+    },
+    {
+      "name": "createPolicy",
+      "endpoint": "https://remifi.up.railway.app/api/policies",
+      "version": "1.0.0",
+      "description": "Multi-recipient USDC split rules (JSON or natural language). Returns reusable policyId."
+    },
+    {
+      "name": "executePaymentJob",
+      "endpoint": "https://remifi.up.railway.app/api/execute",
+      "version": "1.0.0",
+      "description": "One hire → USDC to all policy recipients on Celo + ERC-8021 attribution + on-chain proof."
+    },
+    {
+      "name": "instantUsdcPay",
+      "endpoint": "https://remifi.up.railway.app/api/pay",
+      "version": "1.0.0",
+      "description": "Single-shot tagged USDC to any wallet or ENS / Base name. Optional x402 hire settlement."
+    },
+    {
+      "name": "resolveEnsName",
+      "endpoint": "https://remifi.up.railway.app/api/ens/resolve",
+      "version": "1.0.0",
+      "description": "Resolve and verify a wallet, ENS, or Base name before you pay."
+    },
+    {
+      "name": "getJobProof",
+      "endpoint": "https://remifi.up.railway.app/api/jobs",
+      "version": "1.0.0",
+      "description": "Job status, transfer hashes, and Celoscan links for a completed payout. Use GET /api/jobs/:id."
+    }
+  ],
+  "registrations": [
+    {
+      "agentId": 9745,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ],
+  "supportedTrust": ["reputation"],
+  "updatedAt": 0
+}

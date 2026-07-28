@@ -1,0 +1,21 @@
+{
+  "app": "Remifi",
+  "appUrl": "https://remifi.up.railway.app",
+  "network": "celo-mainnet",
+  "chainId": 42220,
+  "origins": [
+    "https://remifi.up.railway.app",
+    "https://forno.celo.org",
+    "https://celoscan.io",
+    "https://api.x402.celo.org",
+    "https://ethereum.publicnode.com",
+    "https://mainnet.base.org",
+    "https://t.me"
+  ],
+  "contracts": {
+    "usdc": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+    "router": "0xa29fCf4a43aE37a54efe54Ea1BFB35D2B1EF31fb",
+    "identityRegistry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+  },
+  "notes": "Client wallet RPCs go through MiniPay injected window.ethereum when inside MiniPay. Server-side APIs use Forno + ENS/Base RPCs listed above."
+}

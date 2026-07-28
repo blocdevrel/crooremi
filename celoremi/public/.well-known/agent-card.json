@@ -1,0 +1,80 @@
+{
+  "name": "Remifi",
+  "description": "In DeFi, paying a team means calculate shares, send a transfer, send another, track tx hashes, repeat — step after step. What if your agent just did all of it? One hire. Every recipient paid. Proof on Celo. Remifi is the composable USDC payout leg for payroll, treasury, and creator revenue — with ERC-8021 attribution and optional x402 hire settlement.",
+  "url": "https://remifi.up.railway.app/api/a2a",
+  "provider": {
+    "organization": "Remifi",
+    "url": "https://remifi.up.railway.app/"
+  },
+  "version": "1.0.0",
+  "documentationUrl": "https://github.com/blocdevrel/crooremi/blob/main/celoremi/README.md",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": true
+  },
+  "defaultInputModes": ["application/json", "text/plain"],
+  "defaultOutputModes": ["application/json"],
+  "skills": [
+    {
+      "id": "createEnsName",
+      "name": "Create payout name",
+      "description": "Register a human-readable payout identity for a recipient (ENS / Base-style naming where supported).",
+      "tags": ["identity", "ens", "payroll"],
+      "examples": [
+        "Register blockdevrel under acme"
+      ]
+    },
+    {
+      "id": "createPolicy",
+      "name": "Create split policy",
+      "description": "Define multi-recipient USDC split rules (JSON or natural language). Recipients by wallet or ENS / Base name. Returns a reusable policyId.",
+      "tags": ["payroll", "policy", "split", "celo"],
+      "examples": [
+        "Split 60% to blockdevrel.base.eth, 40% to treasury.acme.base.eth",
+        "{\"name\":\"team-july\",\"recipients\":[{\"address\":\"0x…\",\"bps\":6000},{\"address\":\"0x…\",\"bps\":4000}]}"
+      ]
+    },
+    {
+      "id": "executePaymentJob",
+      "name": "Execute payroll",
+      "description": "One hire → Router executeSplit pays every policy recipient on Celo mainnet with ERC-8021 attribution. Returns job proof + Celoscan links.",
+      "tags": ["payroll", "execute", "usdc", "attribution", "x402"],
+      "examples": [
+        "{\"policyId\":\"…\",\"amount\":\"10.00\"}"
+      ]
+    },
+    {
+      "id": "resolveEnsName",
+      "name": "Resolve name",
+      "description": "Verify a wallet, ENS, or Base name before you pay.",
+      "tags": ["resolve", "ens", "verify"],
+      "examples": [
+        "Resolve vitalik.eth",
+        "Resolve blockdevrel.base.eth"
+      ]
+    },
+    {
+      "id": "instantUsdcPay",
+      "name": "Instant USDC pay",
+      "description": "Single-shot tagged USDC to any wallet or ENS / Base name. Optional x402 hire settlement for Track 2.",
+      "tags": ["pay", "usdc", "instant", "x402"],
+      "examples": [
+        "{\"to\":\"0x…\",\"amount\":\"0.01\"}",
+        "{\"to\":\"vitalik.eth\",\"amount\":\"1.00\"}"
+      ]
+    },
+    {
+      "id": "getJobProof",
+      "name": "Job / delivery proof",
+      "description": "Fetch job status, transfer hashes, and explorer links for a completed payout.",
+      "tags": ["proof", "jobs", "celoscan"]
+    },
+    {
+      "id": "health",
+      "name": "Agent health",
+      "description": "Liveness, chain connectivity, agent USDC balance hint, router + x402 facilitator status.",
+      "tags": ["health", "ops"]
+    }
+  ]
+}
