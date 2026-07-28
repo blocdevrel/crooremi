@@ -29,7 +29,7 @@ export function buildClientHireRequirements(input: {
 }): PaymentRequirements {
   return {
     scheme: "exact",
-    network: "eip155:42220",
+    network: "celo",
     maxAmountRequired: input.hirePrice,
     resource: input.resource,
     description: "Remifi hire fee",

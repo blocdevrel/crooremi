@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1
+# Short-lived cron runner: POST /api/schedules/heartbeat then exit.
+FROM curlimages/curl:8.12.1
+COPY scripts/railway-heartbeat.sh /railway-heartbeat.sh
+USER root
+RUN chmod +x /railway-heartbeat.sh
+USER curl_user
+ENTRYPOINT ["/bin/sh", "/railway-heartbeat.sh"]

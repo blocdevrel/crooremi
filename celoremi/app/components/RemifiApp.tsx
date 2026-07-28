@@ -675,6 +675,44 @@ export function RemifiApp() {
     if (tab === "split" && splitMode === "payroll") void loadSchedules();
   }, [tab, splitMode]);
 
+  async function disableAutoPayroll(scheduleId: string) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/schedules", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduleId, enabled: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not turn off auto payroll");
+      setToast({ kind: "ok", text: "Auto payroll off" });
+      void loadSchedules();
+    } catch (e) {
+      setToast({
+        kind: "err",
+        text: e instanceof Error ? e.message : "Could not turn off auto payroll",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleAutoPayroll(next: boolean) {
+    if (!policyId.trim()) {
+      setToast({ kind: "err", text: "Select a policy first" });
+      return;
+    }
+    const existing = activeSchedules.find(
+      (s) => s.policyId === policyId.trim() && s.enabled,
+    );
+    if (next) {
+      if (existing) return;
+      await enableAutoPayroll();
+      return;
+    }
+    if (existing) await disableAutoPayroll(existing.scheduleId);
+  }
+
   async function enableAutoPayroll() {
     if (!policyId.trim()) {
       setToast({ kind: "err", text: "Select a policy first" });
@@ -703,10 +741,7 @@ export function RemifiApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Schedule create failed");
-      setToast({
-        kind: "ok",
-        text: "Auto payroll enabled — fund the agent; heartbeat runs tagged splits + x402",
-      });
+      setToast({ kind: "ok", text: "Auto payroll on" });
       void loadSchedules();
     } catch (e) {
       setToast({
@@ -867,6 +902,18 @@ export function RemifiApp() {
     () => savedPolicies.find((p) => p.policyId === policyId) ?? null,
     [savedPolicies, policyId],
   );
+
+  const autoPayrollSchedule = useMemo(
+    () =>
+      activeSchedules.find((s) => s.policyId === policyId && s.enabled) ?? null,
+    [activeSchedules, policyId],
+  );
+
+  useEffect(() => {
+    if (autoPayrollSchedule) {
+      setScheduleInterval(String(autoPayrollSchedule.intervalMinutes));
+    }
+  }, [autoPayrollSchedule]);
 
   useEffect(() => {
     if (tab !== "split" || splitMode !== "payroll" || policiesLoading) return;
@@ -1319,6 +1366,43 @@ export function RemifiApp() {
             </div>
           ) : (
             <div className="grid gap-5 rounded-[calc(var(--radius-pp)+0.15rem)] border border-pp-ink/5 bg-pp-white p-4 shadow-pp sm:p-6 lg:p-7">
+              <div className="flex items-center justify-end gap-2 border-b border-pp-ink/6 pb-3">
+                <span className="mr-auto text-xs font-bold text-pp-muted sm:mr-0 sm:hidden">
+                  Run payroll
+                </span>
+                <span className="hidden text-[0.68rem] font-extrabold uppercase tracking-[0.06em] text-pp-muted sm:inline">
+                  Auto payroll
+                </span>
+                <select
+                  value={scheduleInterval}
+                  onChange={(e) => setScheduleInterval(e.target.value)}
+                  disabled={busy || !policyId || Boolean(autoPayrollSchedule)}
+                  aria-label="Auto payroll cadence"
+                  className="h-8 min-w-[5.5rem] rounded-lg border border-pp-ink/10 bg-pp-mist/50 px-2 text-xs font-bold text-pp-ink outline-none transition focus:border-pp-teal disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <option value="20">Every 20m</option>
+                  <option value="60">Hourly</option>
+                  <option value="1440">Daily</option>
+                </select>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={Boolean(autoPayrollSchedule)}
+                  aria-label="Auto payroll"
+                  disabled={busy || !policyId || schedulesLoading}
+                  onClick={() => void toggleAutoPayroll(!autoPayrollSchedule)}
+                  className={`relative h-7 w-11 shrink-0 rounded-full transition-colors disabled:opacity-45 ${
+                    autoPayrollSchedule ? "bg-pp-teal" : "bg-pp-mist"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${
+                      autoPayrollSchedule ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="grid gap-3">
                 <div className="flex items-center justify-between gap-2">
                   <label className="grid flex-1 gap-1.5">
@@ -1456,59 +1540,6 @@ export function RemifiApp() {
               >
                 {busy ? "Paying…" : "Pay USDC"}
               </button>
-
-              <div className="grid gap-3 rounded-[var(--radius-pp-sm)] border border-pp-ink/8 bg-pp-mist/20 p-4">
-                <div>
-                  <p className="text-sm font-extrabold text-pp-ink">Auto payroll</p>
-                  <p className="mt-1 text-xs font-medium leading-snug text-pp-muted">
-                    RemitRoute-style heartbeat: recurring tagged USDC + x402 hire each run.
-                    Fund the agent, then enable — call{" "}
-                    <code className="text-[0.65rem]">POST /api/schedules/heartbeat</code> every
-                    20+ min (cron).
-                  </p>
-                </div>
-                <label className="grid gap-1.5">
-                  <span className="text-xs font-bold text-pp-muted">Cadence</span>
-                  <select
-                    value={scheduleInterval}
-                    onChange={(e) => setScheduleInterval(e.target.value)}
-                    className="min-h-11 rounded-[0.95rem] border border-[#e4e4e4] bg-[#f7f8f6] px-3 text-sm font-medium outline-none focus:border-pp-teal"
-                  >
-                    <option value="20">Every 20 minutes</option>
-                    <option value="60">Hourly</option>
-                    <option value="1440">Daily</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={busy || !policyId}
-                  onClick={() => void enableAutoPayroll()}
-                  className="flex min-h-11 w-full items-center justify-center rounded-full border border-pp-teal/40 bg-pp-mint/40 px-5 text-sm font-extrabold text-pp-ink transition enabled:hover:bg-pp-mint/70 disabled:opacity-50"
-                >
-                  Enable auto payroll
-                </button>
-                {schedulesLoading ? (
-                  <p className="text-xs text-pp-muted">Loading schedules…</p>
-                ) : activeSchedules.length > 0 ? (
-                  <ul className="grid gap-2 text-xs">
-                    {activeSchedules.slice(0, 3).map((s) => (
-                      <li
-                        key={s.scheduleId}
-                        className="rounded-md border border-pp-ink/6 bg-pp-white/80 px-3 py-2"
-                      >
-                        <span className="font-extrabold text-pp-ink">
-                          {s.policyName || "Policy"} · ${formatUsdc(s.amount)} USDC
-                        </span>
-                        <span className="mt-0.5 block text-pp-muted">
-                          every {s.intervalMinutes}m · {s.runCount} runs
-                          {s.enabled ? "" : " · paused"}
-                          {s.lastError ? ` · ${s.lastError}` : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
             </div>
           )}
         </main>

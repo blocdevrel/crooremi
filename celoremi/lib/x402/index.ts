@@ -24,7 +24,7 @@ export function buildHireRequirements(resource: string): PaymentRequirements {
   }
   return {
     scheme: "exact",
-    network: "eip155:42220",
+    network: "celo",
     maxAmountRequired: env.X402_HIRE_PRICE.toString(),
     resource,
     description: "Remifi hire fee",
@@ -123,7 +123,7 @@ export function buildPaymentResponseHeader(txHash?: string): string | undefined 
   const body = {
     success: true,
     transaction: txHash,
-    network: "eip155:42220",
+    network: "celo",
     errorReason: null,
   };
   return Buffer.from(JSON.stringify(body), "utf8").toString("base64");
@@ -145,9 +145,7 @@ export async function settleX402Hire(
 
   const paymentRequirements = {
     ...requirements,
-    network: (requirements.network === "celo"
-      ? "celo"
-      : requirements.network) as "celo" | "eip155:42220",
+    network: "celo" as const,
     scheme: "exact" as const,
   };
 
