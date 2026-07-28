@@ -1,13 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Address } from "viem";
-import { usdcDecimalForInput } from "../../lib/minipay/balance";
+import type { Address, WalletClient } from "viem";
+import {
+  readUsdcBalanceBaseUnits,
+  usdcDecimalForInput,
+} from "../../lib/minipay/balance";
 import {
   isMiniPayRuntime,
   isMobileDevice,
   openInMiniPay,
 } from "../../lib/minipay/connect";
+import { sendTaggedUsdcFromWallet } from "../../lib/minipay/wallet-payout";
+import { computeSplitAmounts } from "../../lib/policy/validate";
 import { fetchWithX402Hire } from "../../lib/x402/browser";
 import { useMiniPayWallet } from "../hooks/useMiniPayWallet";
 
@@ -24,6 +29,7 @@ type Health = {
   mockPayout: boolean;
   payrollMode: string;
   attributionTagConfigured: boolean;
+  attributionTag?: string | null;
   x402: {
     enabled: boolean;
     payTo: string | null;
@@ -380,7 +386,67 @@ export function RemifiApp() {
     if (formatted) setter(formatted);
   }
 
-  async function ensureUsdcForPay(amountStr: string): Promise<boolean> {
+  async function requireConnectedPayer(): Promise<{
+    client: WalletClient;
+    account: Address;
+  } | null> {
+    if (!wallet.address || walletIsAgent) {
+      setToast({
+        kind: "err",
+        text: "Connect your personal wallet with USDC on Celo to pay",
+      });
+      return null;
+    }
+    const connected = await wallet.getWalletClient();
+    if (!connected) {
+      setToast({ kind: "err", text: "Connect your wallet first" });
+      return null;
+    }
+    return connected;
+  }
+
+  async function ensureWalletFundedForPay(amountStr: string): Promise<boolean> {
+    const amount = parseUsdcBaseUnits(amountStr);
+    if (amount <= 0n) {
+      setToast({ kind: "err", text: "Enter a valid USDC amount" });
+      return false;
+    }
+    const hirePrice =
+      health?.x402?.enabled && health.x402.hirePrice
+        ? parseUsdcBaseUnits(health.x402.hirePrice)
+        : 0n;
+
+    if (!wallet.address || walletIsAgent) {
+      setToast({
+        kind: "err",
+        text: "Connect your personal wallet with USDC on Celo to pay",
+      });
+      return false;
+    }
+
+    const userBal = parseUsdcBaseUnits(walletUsdcBalance);
+    const userNeed = amount + hirePrice;
+    if (userBal < userNeed) {
+      setToast({
+        kind: "err",
+        text: `Need ${formatUsdc(userNeed.toString())} USDC in your wallet${hirePrice > 0n ? ` (includes ${formatUsdc(hirePrice.toString())} x402 hire fee)` : ""}.`,
+      });
+      return false;
+    }
+
+    if (!health?.attributionTag) {
+      setToast({
+        kind: "err",
+        text: "Remifi attribution is not configured — try again later",
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /** Auto payroll runs server-side from the agent wallet — fund it first. */
+  async function ensureAgentFundedForAutoPay(amountStr: string): Promise<boolean> {
     const amount = parseUsdcBaseUnits(amountStr);
     if (amount <= 0n) {
       setToast({ kind: "err", text: "Enter a valid USDC amount" });
@@ -391,31 +457,14 @@ export function RemifiApp() {
         ? parseUsdcBaseUnits(health.x402.hirePrice)
         : 0n;
     const agentBal = parseUsdcBaseUnits(health?.usdcBalance);
-    const walletPaysHire = Boolean(wallet.address && !walletIsAgent && hirePrice > 0n);
-    const agentNeed = walletPaysHire ? amount : amount + hirePrice;
-
-    if (walletPaysHire) {
-      // walletUsdcBalance is a human decimal from formatUnits (e.g. "1.25")
-      const userBal = parseUsdcBaseUnits(walletUsdcBalance);
-      const agentDeficit = agentBal >= amount ? 0n : amount - agentBal;
-      const userNeed = hirePrice + agentDeficit;
-      if (userBal < userNeed) {
-        setToast({
-          kind: "err",
-          text: `Need ${formatUsdc(userNeed.toString())} USDC in your wallet (includes ${formatUsdc(hirePrice.toString())} x402 hire fee).`,
-        });
-        return false;
-      }
-    }
+    const agentNeed = amount + hirePrice;
 
     if (agentBal >= agentNeed) return true;
 
     if (!wallet.address || walletIsAgent) {
       setToast({
         kind: "err",
-        text: walletPaysHire
-          ? "Not enough USDC on the agent. Connect your wallet with USDC on Celo, then try again."
-          : "Not enough USDC. Connect your wallet with USDC on Celo, then try again.",
+        text: "Auto payroll runs from the Remifi agent wallet. Connect your wallet to fund it, or send USDC to the agent address.",
       });
       return false;
     }
@@ -428,14 +477,79 @@ export function RemifiApp() {
 
     const deficit = agentNeed - agentBal;
     try {
-      setToast({ kind: "ok", text: "Using USDC from your wallet…" });
+      setToast({ kind: "ok", text: "Funding agent for auto payroll…" });
       await wallet.fundAgent(agent, deficit);
+      const funded = await readUsdcBalanceBaseUnits(agent);
+      if (funded < agentNeed) {
+        setToast({
+          kind: "err",
+          text: `Agent still needs ${formatUsdc(agentNeed.toString())} USDC for auto payroll.`,
+        });
+        return false;
+      }
       await loadHealth();
       return true;
     } catch (e) {
       setToast({ kind: "err", text: friendlyWalletError(e) });
       return false;
     }
+  }
+
+  async function sendWalletSplitPayments(params: {
+    policyId: string;
+    amount: string;
+    connected: { client: WalletClient; account: Address };
+  }) {
+    const policyRes = await fetch(`/api/policies/${params.policyId}`, {
+      cache: "no-store",
+    });
+    const policy = await policyRes.json();
+    if (!policyRes.ok) {
+      throw new Error(policy.error || "Policy not found");
+    }
+
+    const legs = computeSplitAmounts(
+      policy.recipients,
+      BigInt(params.amount),
+    ).filter((leg) => leg.amount > 0n);
+
+    const tag = health?.attributionTag;
+    if (!tag) throw new Error("Attribution tag not configured");
+
+    const transfers: Array<{
+      to: string;
+      amount: string;
+      txHash: string;
+      explorer: string;
+      label?: string;
+    }> = [];
+
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i]!;
+      setToast({
+        kind: "ok",
+        text:
+          legs.length > 1
+            ? `Confirm transfer ${i + 1} of ${legs.length} in your wallet…`
+            : "Confirm USDC transfer in your wallet…",
+      });
+      const txHash = await sendTaggedUsdcFromWallet({
+        client: params.connected.client,
+        account: params.connected.account,
+        to: leg.address,
+        amountBaseUnits: leg.amount,
+        attributionTag: tag,
+      });
+      transfers.push({
+        to: leg.address,
+        amount: leg.amount.toString(),
+        txHash,
+        explorer: `https://celoscan.io/tx/${txHash}`,
+        ...(leg.label ? { label: leg.label } : {}),
+      });
+    }
+
+    return transfers;
   }
 
   function x402HireConfig(resource: string) {
@@ -642,11 +756,26 @@ export function RemifiApp() {
       }
       const amount = usdcToBaseUnits(splitAmount);
       if (!amount || amount === "0") throw new Error("Enter a valid USDC amount");
-      if (!(await ensureUsdcForPay(amount))) return;
+      if (!(await ensureWalletFundedForPay(amount))) return;
 
-      const execRes = await postWithX402Hire("/api/execute", {
+      const connected = await requireConnectedPayer();
+      if (!connected) return;
+
+      const transfers = await sendWalletSplitPayments({
         policyId: id,
         amount,
+        connected,
+      });
+
+      const execRes = await postWithX402Hire("/api/execute/wallet", {
+        policyId: id,
+        amount,
+        payer: connected.account,
+        transfers: transfers.map(({ to, amount: legAmount, txHash }) => ({
+          to,
+          amount: legAmount,
+          txHash,
+        })),
         clientJobId: `ui-${Date.now()}`,
       });
       const job = await execRes.json();
@@ -737,7 +866,7 @@ export function RemifiApp() {
       setToast({ kind: "err", text: "Enter a valid USDC amount" });
       return;
     }
-    if (!(await ensureUsdcForPay(amount))) return;
+    if (!(await ensureAgentFundedForAutoPay(amount))) return;
 
     setBusy(true);
     try {
@@ -788,11 +917,36 @@ export function RemifiApp() {
       const amount = usdcToBaseUnits(payAmount);
       if (!amount || amount === "0") throw new Error("Enter a valid USDC amount");
       if (!payTo.trim()) throw new Error("Enter a 0x, ENS, or Base name");
-      if (!(await ensureUsdcForPay(amount))) return;
+      if (!(await ensureWalletFundedForPay(amount))) return;
 
-      const res = await postWithX402Hire("/api/pay", {
-        to: payTo.trim(),
+      const connected = await requireConnectedPayer();
+      if (!connected) return;
+
+      const resolveRes = await fetch("/api/ens/resolve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: payTo.trim() }),
+      });
+      const resolved = await resolveRes.json();
+      const hit = resolved.results?.[0];
+      if (!resolveRes.ok || !hit?.resolved) {
+        throw new Error(hit?.error || "Could not resolve recipient");
+      }
+
+      setToast({ kind: "ok", text: "Confirm USDC transfer in your wallet…" });
+      const txHash = await sendTaggedUsdcFromWallet({
+        client: connected.client,
+        account: connected.account,
+        to: hit.address as Address,
+        amountBaseUnits: BigInt(amount),
+        attributionTag: health!.attributionTag!,
+      });
+
+      const res = await postWithX402Hire("/api/pay/wallet", {
+        to: hit.address,
         amount,
+        payer: connected.account,
+        txHash,
       });
       const job = await res.json();
       if (!res.ok) throw new Error(job.error || "Pay failed");

@@ -57,6 +57,7 @@ export async function GET() {
     chainId: env.CELO_CHAIN_ID,
     usdc: env.USDC_ADDRESS,
     attributionTagConfigured: Boolean(env.ATTRIBUTION_TAG),
+    attributionTag: env.ATTRIBUTION_TAG ?? null,
     agentAddress: agent ?? null,
     x402: {
       enabled: isX402Enabled(),

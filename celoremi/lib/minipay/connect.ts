@@ -1,10 +1,15 @@
 import {
+  createPublicClient,
   createWalletClient,
   custom,
+  http,
   type Address,
   type WalletClient,
 } from "viem";
 import { celo } from "viem/chains";
+
+const CELO_RPC =
+  process.env.NEXT_PUBLIC_CELO_RPC_URL?.trim() || "https://forno.celo.org";
 
 /** Celo mainnet USDC (Circle). */
 export const CELO_USDC =
@@ -204,7 +209,7 @@ export async function fundAgentWithUsdc(params: {
 
   await ensureCeloChain();
 
-  return params.client.writeContract({
+  const hash = await params.client.writeContract({
     account: params.account,
     chain: celo,
     address: CELO_USDC,
@@ -212,4 +217,14 @@ export async function fundAgentWithUsdc(params: {
     functionName: "transfer",
     args: [params.agentAddress, params.amountBaseUnits],
   });
+
+  const receipt = await createPublicClient({
+    chain: celo,
+    transport: http(CELO_RPC),
+  }).waitForTransactionReceipt({ hash });
+  if (receipt.status === "reverted") {
+    throw new Error("USDC transfer to agent failed on-chain");
+  }
+
+  return hash;
 }

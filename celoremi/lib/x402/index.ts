@@ -288,3 +288,53 @@ export function isHireResult(
 ): value is HireResult {
   return !(value instanceof NextResponse);
 }
+
+/**
+ * Wallet-settlement routes: caller must attach X-PAYMENT (never agent-signed hire).
+ */
+export async function requireUserHirePayment(
+  req: Request,
+  resource: string,
+): Promise<HireResult | NextResponse> {
+  if (env.DEV_SKIP_X402 || !isX402Enabled()) {
+    try {
+      assertExecuteAuth(req as import("next/server").NextRequest);
+      return { mode: env.DEV_SKIP_X402 ? "dev_skip" : "api_key" };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unauthorized";
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+  }
+
+  const payTo = getX402PayTo();
+  if (!payTo || !env.X402_API_KEY) {
+    return NextResponse.json(
+      {
+        error:
+          "Set X402_API_KEY + X402_PAY_TO (Track 2) — required for Remifi hire flow",
+      },
+      { status: 503 },
+    );
+  }
+
+  const payment =
+    req.headers.get("x-payment") || req.headers.get("PAYMENT-SIGNATURE");
+
+  if (!payment) {
+    return paymentRequiredResponse(resource);
+  }
+
+  try {
+    const requirements = buildHireRequirements(resource);
+    const settled = await settleX402Hire(payment, requirements);
+    return {
+      mode: "x402",
+      ...(settled.txHash ? { settlementTxHash: settled.txHash } : {}),
+    };
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "x402 settlement failed";
+    console.error("[remifi] x402 user hire error", message);
+    return NextResponse.json({ error: message }, { status: 402 });
+  }
+}

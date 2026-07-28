@@ -6,19 +6,29 @@ import { CELO_USDC } from "./connect";
 const RPC =
   process.env.NEXT_PUBLIC_CELO_RPC_URL?.trim() || "https://forno.celo.org";
 
-export async function readWalletUsdcBalance(
-  address: Address,
-): Promise<string> {
-  const client = createPublicClient({
+export function createCeloBrowserPublicClient() {
+  return createPublicClient({
     chain: celo,
     transport: http(RPC),
   });
-  const raw = await client.readContract({
+}
+
+export async function readUsdcBalanceBaseUnits(
+  address: Address,
+): Promise<bigint> {
+  const client = createCeloBrowserPublicClient();
+  return client.readContract({
     address: CELO_USDC,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: [address],
   });
+}
+
+export async function readWalletUsdcBalance(
+  address: Address,
+): Promise<string> {
+  const raw = await readUsdcBalanceBaseUnits(address);
   return formatUnits(raw, 6);
 }
 

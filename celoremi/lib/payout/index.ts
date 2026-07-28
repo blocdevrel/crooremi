@@ -2,6 +2,7 @@ import {
   concat,
   encodeFunctionData,
   erc20Abi,
+  formatUnits,
   type Hex,
   parseAbi,
 } from "viem";
@@ -43,7 +44,7 @@ async function assertAgentFunded(required: bigint): Promise<void> {
 
   if (balance < required) {
     throw new Error(
-      `Agent USDC balance ${balance} < required ${required} (wallet ${agent})`,
+      `Agent USDC balance ${formatUnits(balance, 6)} < required ${formatUnits(required, 6)} USDC (wallet ${agent}). Connect your wallet on the Pay tab so Remifi can fund the agent before sending.`,
     );
   }
 }
