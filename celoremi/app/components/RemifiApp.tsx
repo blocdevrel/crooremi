@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
-import { readWalletUsdcBalance, usdcDecimalForInput } from "../../lib/minipay/balance";
+import { usdcDecimalForInput } from "../../lib/minipay/balance";
 import {
-  getWalletChainId,
   isMiniPayRuntime,
   isMobileDevice,
   openInMiniPay,
@@ -17,6 +16,7 @@ type ProofFilter = "all" | "sends" | "splits" | "x402";
 type Health = {
   ok: boolean;
   agentAddress: string | null;
+  usdcBalance: string | null;
   usdcBalanceFormatted: string | null;
   chainOk: boolean;
   mockPayout: boolean;
@@ -208,7 +208,7 @@ export function RemifiApp() {
   );
   const [payAmount, setPayAmount] = useState("0.01");
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<string | null>(null);
-  const [walletChainId, setWalletChainId] = useState<number | null>(null);
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const [inMiniPay, setInMiniPay] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -217,38 +217,34 @@ export function RemifiApp() {
     setIsMobile(isMobileDevice());
   }, []);
 
-  useEffect(() => {
-    if (!wallet.address) {
-      setWalletChainId(null);
-      return;
-    }
-    void getWalletChainId().then(setWalletChainId);
-    const eth = typeof window !== "undefined" ? window.ethereum : undefined;
-    if (!eth?.on) return;
-    const onChainChanged = () => {
-      void getWalletChainId().then(setWalletChainId);
-    };
-    eth.on("chainChanged", onChainChanged);
-    return () => eth.removeListener?.("chainChanged", onChainChanged);
-  }, [wallet.address]);
-
-  const loadWalletBalance = useCallback(async () => {
+  const loadWalletBalance = useCallback(async (): Promise<boolean> => {
     if (!wallet.address) {
       setWalletUsdcBalance(null);
-      return;
+      return false;
     }
     if (
       health?.agentAddress &&
       wallet.address.toLowerCase() === health.agentAddress.toLowerCase()
     ) {
       setWalletUsdcBalance(null);
-      return;
+      return false;
     }
     try {
-      const bal = await readWalletUsdcBalance(wallet.address);
-      setWalletUsdcBalance(bal);
+      const res = await fetch(
+        `/api/wallet/balance?address=${encodeURIComponent(wallet.address)}`,
+        { cache: "no-store" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Balance lookup failed");
+      }
+      setWalletUsdcBalance(
+        typeof data.balance === "string" ? data.balance : null,
+      );
+      return true;
     } catch {
       setWalletUsdcBalance(null);
+      return false;
     }
   }, [wallet.address, health?.agentAddress]);
 
@@ -340,12 +336,48 @@ export function RemifiApp() {
 
   function applyMaxAmount(setter: (value: string) => void) {
     const walletN = walletUsdcBalance ? Number(walletUsdcBalance) : 0;
-    const agentN = health?.usdcBalanceFormatted
-      ? Number(health.usdcBalanceFormatted)
-      : 0;
-    const max = walletN > 0 ? walletN : agentN;
-    const formatted = usdcDecimalForInput(max);
+    if (walletN <= 0) {
+      setToast({
+        kind: "err",
+        text: wallet.address
+          ? "No USDC in your wallet on Celo"
+          : "Connect your wallet to use Max",
+      });
+      return;
+    }
+    const formatted = usdcDecimalForInput(walletN);
     if (formatted) setter(formatted);
+  }
+
+  async function ensureUsdcForPay(amountStr: string): Promise<boolean> {
+    const amount = BigInt(amountStr);
+    const agentBal = health?.usdcBalance ? BigInt(health.usdcBalance) : 0n;
+    if (agentBal >= amount) return true;
+
+    if (!wallet.address || walletIsAgent) {
+      setToast({
+        kind: "err",
+        text: "Not enough USDC. Connect your wallet with USDC on Celo, then try again.",
+      });
+      return false;
+    }
+
+    const agent = health?.agentAddress as Address | undefined;
+    if (!agent) {
+      setToast({ kind: "err", text: "Remifi is unavailable — refresh and try again" });
+      return false;
+    }
+
+    const deficit = amount - agentBal;
+    try {
+      setToast({ kind: "ok", text: "Using USDC from your wallet…" });
+      await wallet.fundAgent(agent, deficit);
+      await loadHealth();
+      return true;
+    } catch (e) {
+      setToast({ kind: "err", text: friendlyWalletError(e) });
+      return false;
+    }
   }
 
   function recipientsToText(
@@ -523,6 +555,7 @@ export function RemifiApp() {
       }
       const amount = usdcToBaseUnits(splitAmount);
       if (!amount || amount === "0") throw new Error("Enter a valid USDC amount");
+      if (!(await ensureUsdcForPay(amount))) return;
 
       const execRes = await fetch("/api/execute", {
         method: "POST",
@@ -576,6 +609,7 @@ export function RemifiApp() {
       const amount = usdcToBaseUnits(payAmount);
       if (!amount || amount === "0") throw new Error("Enter a valid USDC amount");
       if (!payTo.trim()) throw new Error("Enter a 0x, ENS, or Base name");
+      if (!(await ensureUsdcForPay(amount))) return;
 
       const res = await fetch("/api/pay", {
         method: "POST",
@@ -660,78 +694,39 @@ export function RemifiApp() {
       wallet.address.toLowerCase() === health.agentAddress.toLowerCase(),
   );
 
-  const walletOnCelo = walletChainId === 42220;
-
   const useMiniPayLink = isMobile && !inMiniPay;
 
   function friendlyWalletError(err: unknown): string {
     const msg = err instanceof Error ? err.message : String(err);
     if (/42220|target chain|Current Chain ID: 1/i.test(msg)) {
       return useMiniPayLink
-        ? "Open Remifi in MiniPay on Celo to fund the agent"
-        : "Switch your wallet to Celo mainnet to fund the agent";
+        ? "Open Remifi in MiniPay on Celo to pay with USDC"
+        : "Switch your wallet to Celo mainnet to pay with USDC";
     }
     if (/personal wallet/i.test(msg)) return msg;
     return msg.length > 140 ? `${msg.slice(0, 140)}…` : msg;
   }
 
-  async function fundFromWallet() {
-    setToast(null);
-    if (useMiniPayLink) {
-      openInMiniPay();
-      return;
-    }
-    if (!wallet.address) {
+  const userBalanceDisplay =
+    wallet.address && !walletIsAgent
+      ? formatBalanceLine(walletUsdcBalance)
+      : "—";
+
+  async function refreshHomeBalance() {
+    if (!wallet.address || walletIsAgent) {
       setToast({
         kind: "err",
         text: inMiniPay ? "Connect MiniPay first" : "Connect your wallet first",
       });
       return;
     }
-    if (walletIsAgent) {
-      setToast({
-        kind: "err",
-        text: "That is the Remifi agent wallet — connect your personal wallet",
-      });
-      return;
-    }
-    const agent = health?.agentAddress as Address | null | undefined;
-    if (!agent) {
-      setToast({ kind: "err", text: "Agent address unavailable — refresh health" });
-      return;
-    }
-    const amountStr = tab === "pay" ? payAmount : splitAmount;
-    const amount = usdcToBaseUnits(amountStr);
-    if (!amount || amount === "0") {
-      setToast({ kind: "err", text: "Enter a valid USDC amount to fund" });
-      if (tab !== "split" && tab !== "pay") setTab("split");
-      return;
-    }
-    setBusy(true);
-    try {
-      const tx = await wallet.fundAgent(agent, BigInt(amount));
-      setToast({
-        kind: "ok",
-        text: `Funded agent · ${tx.slice(0, 10)}…`,
-      });
-      void loadHealth();
-      void loadWalletBalance();
-    } catch (e) {
-      setToast({
-        kind: "err",
-        text: friendlyWalletError(e),
-      });
-    } finally {
-      setBusy(false);
+    setBalanceRefreshing(true);
+    const ok = await loadWalletBalance();
+    setBalanceRefreshing(false);
+    if (!ok) {
+      setToast({ kind: "err", text: "Could not refresh balance — try again" });
     }
   }
-
-  const balance = health?.usdcBalanceFormatted
-    ? Number(health.usdcBalanceFormatted).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      })
-    : "—";
 
   const filteredPolicies = useMemo(() => {
     const sorted = sortPoliciesNewestFirst(savedPolicies);
@@ -784,7 +779,12 @@ export function RemifiApp() {
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-28 pt-4 sm:max-w-xl sm:px-6 md:max-w-3xl lg:max-w-6xl lg:px-8 lg:pb-16 xl:max-w-7xl">
       <header className="pp-rise sticky top-0 z-20 -mx-4 mb-4 border-b border-pp-ink/5 bg-pp-soft/80 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:mb-8 lg:px-8 lg:py-4">
         <div className="flex items-center justify-between gap-3 lg:gap-6">
-          <div className="flex min-w-0 items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setTab("home")}
+            aria-label="Remifi home"
+            className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-lg text-left transition hover:opacity-85 active:scale-[0.98]"
+          >
             <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pp-ink shadow-pp-soft lg:h-9 lg:w-9">
               <span className="absolute inset-[0.35rem] rounded-full border-2 border-pp-mint" />
               <span className="absolute -inset-1 animate-[pp-ring_2.4s_ease-out_infinite] rounded-full border border-pp-mint/55" />
@@ -792,7 +792,7 @@ export function RemifiApp() {
             <span className="text-lg font-extrabold tracking-[-0.045em] lg:text-xl">
               Remifi
             </span>
-          </div>
+          </button>
 
           <nav className="hidden items-center gap-1 rounded-full border border-pp-ink/8 bg-white/70 p-1 lg:flex">
             {tabs.map(([id, label]) => {
@@ -815,22 +815,6 @@ export function RemifiApp() {
           </nav>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            {health?.agentAddress && wallet.address && !walletIsAgent ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void fundFromWallet()}
-                title="Send USDC from your wallet to the agent on Celo"
-                className="inline-flex min-h-8 items-center rounded-full border border-pp-mint-deep/45 bg-pp-mint/70 px-2.5 text-[0.7rem] font-extrabold text-pp-ink transition active:scale-[0.98] disabled:opacity-60 sm:px-3"
-              >
-                {busy ? "…" : (
-                  <>
-                    <span className="lg:hidden">Fund</span>
-                    <span className="hidden lg:inline">Fund agent</span>
-                  </>
-                )}
-              </button>
-            ) : null}
             {wallet.address ? (
               <span
                 className="inline-flex max-w-[11rem] items-center gap-1 truncate rounded-full border border-pp-mint-deep/45 bg-pp-mint/50 py-1.5 pl-2.5 pr-1.5 text-[0.7rem] font-extrabold tracking-tight text-pp-ink sm:max-w-[12rem]"
@@ -921,39 +905,30 @@ export function RemifiApp() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[clamp(2rem,7vw,3rem)] font-extrabold tracking-[-0.04em] leading-none">
-                    ${balance}
+                    ${userBalanceDisplay}
                   </p>
                   <p className="mt-1.5 text-sm font-medium text-pp-muted lg:text-base">
-                    Agent USDC balance
+                    {wallet.address && !walletIsAgent
+                      ? "Your USDC balance"
+                      : "Your USDC on Celo"}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => void loadHealth()}
-                  className="rounded-full border border-pp-ink/10 bg-pp-mist/80 px-3 py-1.5 text-xs font-bold text-pp-muted"
+                  disabled={balanceRefreshing}
+                  onClick={() => void refreshHomeBalance()}
+                  className="rounded-full border border-pp-ink/10 bg-pp-mist/80 px-3 py-1.5 text-xs font-bold text-pp-muted disabled:opacity-60"
                 >
-                  Refresh
+                  {balanceRefreshing ? "…" : "Refresh"}
                 </button>
               </div>
 
-              <p className="mt-4 text-xs font-medium text-pp-muted lg:text-sm">
-                Agent {shortAddr(health?.agentAddress)}
-                {health?.mockPayout ? " · mock payout" : ""}
-                {healthErr ? ` · ${healthErr}` : ""}
-              </p>
-              {wallet.address && !walletIsAgent ? (
-                <p className="mt-1 text-xs font-semibold text-pp-ink">
-                  You · {wallet.isMiniPay ? "MiniPay" : "Wallet"}{" "}
-                  {shortAddr(wallet.address)}
-                  {!walletOnCelo && walletChainId !== null ? (
-                    <span className="font-medium text-pp-muted">
-                      {" "}
-                      · switch to Celo
-                    </span>
-                  ) : null}
+              {wallet.address && !walletIsAgent ? null : inMiniPay && wallet.connecting ? (
+                <p className="mt-4 text-xs font-medium text-pp-muted">
+                  Connecting your MiniPay wallet…
                 </p>
               ) : useMiniPayLink ? (
-                <p className="mt-2 text-xs font-medium text-pp-muted">
+                <p className="mt-4 text-xs font-medium text-pp-muted">
                   <button
                     type="button"
                     onClick={() => openInMiniPay()}
@@ -961,15 +936,15 @@ export function RemifiApp() {
                   >
                     Open in MiniPay
                   </button>{" "}
-                  to connect your wallet and fund the agent on Celo.
+                  to connect and pay with USDC.
                 </p>
               ) : walletIsAgent ? (
-                <p className="mt-1 text-xs font-semibold text-[#7a322e]">
-                  That address is the agent — connect your personal wallet to
-                  fund it.
+                <p className="mt-4 text-xs font-semibold text-[#7a322e]">
+                  That is the Remifi service wallet — connect your personal
+                  wallet to pay.
                 </p>
               ) : !inMiniPay ? (
-                <p className="mt-2 text-xs font-medium text-pp-muted">
+                <p className="mt-4 text-xs font-medium text-pp-muted">
                   {isMobile ? null : (
                     <>Connect your wallet in the header, or </>
                   )}
@@ -980,11 +955,13 @@ export function RemifiApp() {
                   >
                     open in MiniPay
                   </button>
-                  {isMobile
-                    ? " to connect your wallet and fund the agent on Celo."
-                    : " on your phone."}
+                  {isMobile ? " to connect and pay with USDC." : " on your phone."}
                 </p>
-              ) : null}
+              ) : (
+                <p className="mt-4 text-xs font-medium text-pp-muted">
+                  Connect MiniPay in the header to see your balance and pay.
+                </p>
+              )}
               {wallet.error ? (
                 <p className="mt-1 text-xs font-semibold text-[#7a322e]">
                   {wallet.error}

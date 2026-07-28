@@ -5,6 +5,7 @@
   "description": "Remifi — hireable USDC payroll & revenue-split agent on Celo (ERC-8021 tagged)",
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "rm -rf .next && next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "postinstall": "prisma generate",
